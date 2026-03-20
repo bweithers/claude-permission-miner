@@ -1,0 +1,27 @@
+You are analyzing Claude Code session logs to recommend permission rule changes. The goal is to add high-frequency, low-risk command patterns to the auto-approve list.
+
+## Current settings.json
+<current_settings>
+CURRENT_SETTINGS_PLACEHOLDER
+</current_settings>
+
+## Denied Commands
+<usage_summary>
+USAGE_SUMMARY_PLACEHOLDER
+</usage_summary>
+
+The usage summary contains bash commands that were denied by the user, with timestamps and working directory.
+
+Rules for your recommendations:
+- Commands denied repeatedly are strong candidates for explicit deny rules
+- Use glob patterns where a command varies only by argument (e.g. git -C * commit *)
+- Prefer tighter globs over wide ones
+- Preserve all existing rules unless there is a clear conflict
+- Do not add allow rules — this data only contains denials
+
+For every deny rule you add or modify, add a JSONC comment on the preceding line with:
+- Risk level (low / medium / high)
+- How many times it was denied
+- One sentence on what the risk actually is
+
+Output only raw JSONC. No markdown fences, no explanation, no preamble. Start with { and end with }.
