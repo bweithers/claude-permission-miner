@@ -48,6 +48,20 @@ cp proposed_permissions_settings.json ~/.claude/settings.json
 
 > **Note:** `proposed_permissions_settings.json`, `tool_approvals.txt`, and `tool_denials.txt` are regenerated on every run and are gitignored — they contain your local paths.
 
+## Running weekly via cron
+
+To generate fresh recommendations every week, add this to your crontab (`crontab -e`):
+
+```cron
+0 9 * * 1 bash /path/to/claude-permission-miner/run.sh >> /tmp/permission-miner.log 2>&1
+```
+
+This runs every Monday at 09:00. Then check `/tmp/permission-miner.log` and diff as usual:
+
+```bash
+diff ~/.claude/settings.json /path/to/claude-permission-miner/proposed_permissions_settings.json
+```
+
 ## Sample output
 
 ### tool_approvals.txt (approved commands with frequency)
