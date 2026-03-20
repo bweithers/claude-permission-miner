@@ -1,12 +1,13 @@
 # permission-recommender
 
-Mines your Claude Code session logs for denied `Bash` tool calls, then asks Claude to propose new deny rules for your `~/.claude/settings.json`.
+Mines your Claude Code session logs for `Bash` tool calls, then asks Claude to propose allow and deny rules for your `~/.claude/settings.json`. The primary goal is finding things to **auto-approve** so you stop being prompted for low-risk operations you always accept.
 
 ## How it works
 
-1. **Query** — DuckDB reads `~/.claude/projects/**/*.jsonl` and extracts every `Bash` call where you clicked "Deny"
-2. **Analyse** — Claude receives the denial log + your current `settings.json` and proposes glob-pattern deny rules with risk annotations
-3. **Review** — Output lands in `proposed_permissions_settings.json`; you diff and apply manually
+1. **Query approvals** — DuckDB reads `~/.claude/projects/**/*.jsonl` and extracts every `Bash` call that ran successfully (not denied), grouped by command with frequency count
+2. **Query denials** — same source, filtered for commands you explicitly rejected, also grouped with count
+3. **Analyse** — Claude receives both logs + your current `settings.json` and proposes allow rules (primary) and deny rules (secondary), with glob patterns and risk annotations
+4. **Review** — Output lands in `proposed_permissions_settings.json`; you diff and apply manually
 
 ## Requirements
 
@@ -45,21 +46,32 @@ If happy, copy the output over your settings:
 cp proposed_permissions_settings.json ~/.claude/settings.json
 ```
 
-> **Note:** `proposed_permissions_settings.json` and `tool_denials.txt` are regenerated on every run and are gitignored — they contain your local paths.
+> **Note:** `proposed_permissions_settings.json`, `tool_approvals.txt`, and `tool_denials.txt` are regenerated on every run and are gitignored — they contain your local paths.
 
 ## Sample output
 
-### tool_denials.txt (DuckDB query result)
+### tool_approvals.txt (approved commands with frequency)
 
 ```
-┌──────────────────────────────────────────────┬──────────────────────────┬──────────────────────────────┐
-│ command                                      │ timestamp                │ cwd                          │
-├──────────────────────────────────────────────┼──────────────────────────┼──────────────────────────────┤
-│ cat src/routes/api/garments/+server.ts       │ 2026-03-20T01:42:01.655Z │ /home/user/my-project        │
-│ git -C /home/user/my-project log --oneline -3│ 2026-03-19T03:51:35.022Z │ /home/user/my-project        │
-│ git -C /home/user/my-project log --oneline -3│ 2026-03-19T03:47:52.486Z │ /home/user/my-project        │
-└──────────────────────────────────────────────┴──────────────────────────┴──────────────────────────────┘
-  3 rows  3 columns
+┌──────────────────────────────┬───────────────┬──────────────────────────┐
+│ command                      │ approval_count│ last_approved            │
+├──────────────────────────────┼───────────────┼──────────────────────────┤
+│ git status                   │ 47            │ 2026-03-20T01:42:01.655Z │
+│ git log --oneline -10        │ 31            │ 2026-03-19T18:22:10.123Z │
+│ npm run lint                 │ 18            │ 2026-03-19T03:51:35.022Z │
+│ cat package.json             │ 12            │ 2026-03-18T14:20:00.000Z │
+└──────────────────────────────┴───────────────┴──────────────────────────┘
+```
+
+### tool_denials.txt (denied commands with frequency)
+
+```
+┌──────────────────────────────────────────────┬─────────────┬──────────────────────────┐
+│ command                                      │ denial_count│ last_denied              │
+├──────────────────────────────────────────────┼─────────────┼──────────────────────────┤
+│ git -C /home/user/my-project log --oneline -3│ 18          │ 2026-03-19T03:51:35.022Z │
+│ cat src/routes/api/garments/+server.ts       │ 4           │ 2026-03-20T01:42:01.655Z │
+└──────────────────────────────────────────────┴─────────────┴──────────────────────────┘
 ```
 
 ### proposed_permissions_settings.json (Claude's recommendations)
@@ -69,31 +81,35 @@ cp proposed_permissions_settings.json ~/.claude/settings.json
   "permissions": {
     "allow": [
       "Bash(ls:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(* --version)",
-      "Bash(* --help*)"
+      // Risk: low | Approved: 47 | Read-only status check with no side effects.
+      "Bash(git status*)",
+      // Risk: low | Approved: 31 | Read-only history query.
+      "Bash(git log *)",
+      // Risk: low | Approved: 18 | Runs linter with no write side effects.
+      "Bash(npm run lint*)"
     ],
     "defaultMode": "acceptEdits",
     "deny": [
       "Bash(rm *)",
-      // Risk: low | Denied: 18 | Reads git history from an arbitrary working directory via -C; prefer standard git log without -C path override.
+      // Risk: low | Denied: 18 | Reads git history via -C path override; prefer standard git log.
       "Bash(git -C * log *)",
-      // Risk: low | Denied: 4 | Reads file contents via shell cat rather than the Read tool; use Read tool instead.
+      // Risk: low | Denied: 4 | Reads file contents via shell cat rather than the Read tool.
       "Bash(cat *)"
     ]
   }
 }
 ```
 
-Claude collapses repeated exact commands into glob patterns and annotates each new rule with risk level, denial count, and a one-sentence rationale.
+Claude collapses repeated exact commands into glob patterns and annotates each new rule with risk level, frequency, and a one-sentence rationale.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
 | `run.sh` | Orchestrates the pipeline |
-| `usage_query.sql` | DuckDB query to extract denied commands |
+| `approvals_query.sql` | DuckDB query to extract approved commands with frequency |
+| `usage_query.sql` | DuckDB query to extract denied commands with frequency |
 | `prompt.txt` | System prompt template (placeholders replaced at runtime) |
 | `proposed_permissions_settings.json` | Generated output — review before applying |
-| `tool_denials.txt` | Intermediate query output |
+| `tool_approvals.txt` | Intermediate: approved command frequencies |
+| `tool_denials.txt` | Intermediate: denied command frequencies |

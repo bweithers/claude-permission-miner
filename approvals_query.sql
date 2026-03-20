@@ -1,7 +1,7 @@
 SELECT
     bash.command,
-    COUNT(*) as denial_count,
-    MAX(bash_raw.timestamp) as last_denied
+    COUNT(*) as approval_count,
+    MAX(bash_raw.timestamp) as last_approved
 FROM (
     SELECT
         uuid,
@@ -14,16 +14,17 @@ FROM (
 CROSS JOIN LATERAL (SELECT content->>'input'->>'command' as command) bash
 JOIN (
     SELECT
-        sourceToolAssistantUUID,
-        toolUseResult::VARCHAR as toolUseResult
+        sourceToolAssistantUUID
     FROM read_json_auto('~/.claude/projects/**/*.jsonl')
     WHERE type = 'user'
     AND toolUseResult IS NOT NULL
     AND toolUseResult::VARCHAR != 'null'
+    AND toolUseResult::VARCHAR != '"User rejected tool use"'
 ) result
     ON result.sourceToolAssistantUUID = bash_raw.uuid
 WHERE bash_raw.content->>'name' = 'Bash'
 AND bash.command IS NOT NULL
-AND result.toolUseResult = '"User rejected tool use"'
 GROUP BY bash.command
-ORDER BY denial_count DESC;
+HAVING COUNT(*) >= 3
+ORDER BY approval_count DESC
+LIMIT 60;

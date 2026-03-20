@@ -1,23 +1,48 @@
-You are analyzing Claude Code session logs to recommend permission rule changes. The goal is to add high-frequency, low-risk command patterns to the auto-approve list.
+You are analyzing Claude Code session logs to recommend permission rule changes for ~/.claude/settings.json. The primary goal is to identify high-frequency, low-risk commands that should be added to the allow list so the user stops being prompted for things they always approve.
 
 ## Current settings.json
 <current_settings>
 CURRENT_SETTINGS_PLACEHOLDER
 </current_settings>
 
-## Denied Commands
-<usage_summary>
-USAGE_SUMMARY_PLACEHOLDER
-</usage_summary>
+## Approved Commands (ran successfully, frequency >= 3)
+<approved_commands>
+APPROVALS_PLACEHOLDER
+</approved_commands>
 
-The usage summary contains bash commands that were denied by the user, with timestamps and working directory.
+These are commands Claude ran that the user did not deny. High-frequency entries the user keeps approving manually are the strongest allow candidates.
+
+## Denied Commands (user explicitly clicked deny)
+<denied_commands>
+DENIALS_PLACEHOLDER
+</denied_commands>
+
+These are commands Claude attempted that the user rejected.
+
+---
 
 Rules for your recommendations:
-- Commands denied repeatedly are strong candidates for explicit deny rules
-- Use glob patterns where a command varies only by argument (e.g. git -C * commit *)
+
+**Allow rules (primary focus):**
+- Commands approved frequently that are not already covered by an allow rule are strong candidates for allow rules
+- Only recommend allow rules for genuinely low-risk operations (read-only commands, info queries, version checks, linting, test runners, build tools)
+- Skip commands already covered by existing allow rules
+- Use glob patterns to collapse argument-varying commands (e.g. `Bash(git log *)` rather than listing exact invocations)
+- Prefer tighter globs; avoid `Bash(*)` catchalls
+
+**Deny rules (secondary focus):**
+- Commands denied repeatedly that are not already covered by a deny rule are candidates for deny rules
+- Use glob patterns where a command varies only by argument
 - Prefer tighter globs over wide ones
+
+**General:**
 - Preserve all existing rules unless there is a clear conflict
-- Do not add allow rules — this data only contains denials
+- Do not add allow rules for commands that write to disk, delete files, make network calls, or execute arbitrary scripts
+
+For every allow rule you add or modify, add a JSONC comment on the preceding line with:
+- Risk level (low / medium / high)
+- How many times it was approved
+- One sentence on why it is safe to auto-approve
 
 For every deny rule you add or modify, add a JSONC comment on the preceding line with:
 - Risk level (low / medium / high)
